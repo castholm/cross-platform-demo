@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+
+<meta charset=utf-8>
+<link rel=icon href=data:,>
+<title>app</title>
+
+<script type=module>
+const utf8Decoder = new TextDecoder()
+const stderr = document.getElementById("stderr")
+const { instance: { exports } } = await WebAssembly.instantiateStreaming(fetch("lib/app.wasm"), {
+  debug: {
+    writeToStderr(len, ptr) {
+      const str = utf8Decoder.decode(exports.memory.buffer.slice(ptr, ptr + len))
+      stderr.textContent += str
+    },
+  },
+})
+exports.main()
+</script>
+
+<h1>stderr</h1>
+<pre id=stderr style="white-space: pre-wrap"></pre>
