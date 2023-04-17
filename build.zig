@@ -1,10 +1,11 @@
 const std = @import("std");
+const zsdl = @import("deps/zsdl/build.zig");
 
-pub fn build(b: *std.Build) void {
+pub fn build(b: *std.Build) !void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
 
-    const platform = Platform.create(b, target);
+    const platform = try Platform.create(b, target);
 
     const app = switch (platform.kind) {
         .native => blk: {
@@ -14,6 +15,12 @@ pub fn build(b: *std.Build) void {
                 .target = target,
                 .optimize = optimize,
             });
+            const zsdl_pkg = zsdl.package(b, target, optimize, .{});
+            zsdl_pkg.link(exe);
+            try platform.module.dependencies.put("zsdl", zsdl_pkg.zsdl);
+            const gl = b.createModule(.{ .source_file = .{ .path = "deps/gl.zig" } });
+            exe.addModule("gl", gl);
+            try platform.module.dependencies.put("gl", gl);
             break :blk exe;
         },
         .web => blk: {
@@ -65,8 +72,8 @@ pub const Platform = struct {
 
     pub const Kind = enum { native, web };
 
-    pub fn create(b: *std.Build, cross_target: std.zig.CrossTarget) Platform {
-        const info = std.zig.system.NativeTargetInfo.detect(cross_target) catch unreachable;
+    pub fn create(b: *std.Build, cross_target: std.zig.CrossTarget) !Platform {
+        const info = try std.zig.system.NativeTargetInfo.detect(cross_target);
         return .{
             .kind = if (info.target.isWasm()) .web else .native,
             .entry_source_file = .{ .path = "src/platform/entry.zig" },

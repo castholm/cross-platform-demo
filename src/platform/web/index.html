@@ -5,6 +5,8 @@
 <title>app</title>
 
 <script type=module>
+const canvas = document.getElementById("canvas")
+const gl = canvas.getContext("webgl2")
 const stderr = document.getElementById("stderr")
 
 const utf8Decoder = new TextDecoder()
@@ -12,8 +14,19 @@ const { instance: { exports } } = await WebAssembly.instantiateStreaming(fetch("
   debug: {
     writeToStderr(ptr, len) {
       const str = utf8Decoder.decode(exports.memory.buffer.slice(ptr, ptr + len))
-      console.log(str)
       stderr.textContent += str
+    },
+  },
+  gl: {
+    clearBufferfv(buffer, drawbuffer, value) {
+      const values = new Float32Array(exports.memory.buffer, value, 4)
+      gl.clearBufferfv(buffer, drawbuffer, values)
+    },
+    enable(cap) {
+      gl.enable(cap)
+    },
+    scissor(x, y, width, height) {
+      gl.scissor(x, y, width, height)
     },
   },
 })
@@ -21,5 +34,6 @@ const { instance: { exports } } = await WebAssembly.instantiateStreaming(fetch("
 exports.main()
 </script>
 
+<canvas id=canvas width=640 height=480 style=display:block></canvas>
 <h1>stderr</h1>
 <pre id=stderr style=white-space:pre-wrap></pre>
