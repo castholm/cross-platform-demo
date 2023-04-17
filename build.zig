@@ -25,7 +25,7 @@ pub fn build(b: *std.Build) void {
             });
             lib.rdynamic = true;
             lib.step.dependOn(&b.addInstallFile(
-                .{ .path = "src/web/index.html" },
+                .{ .path = "src/platform/web/index.html" },
                 "index.html",
             ).step);
             break :blk lib;
@@ -60,21 +60,17 @@ pub fn build(b: *std.Build) void {
 
 pub const Platform = struct {
     kind: Kind,
-    module: *std.Build.Module,
     entry_source_file: std.Build.FileSource,
+    module: *std.Build.Module,
 
     pub const Kind = enum { native, web };
 
     pub fn create(b: *std.Build, cross_target: std.zig.CrossTarget) Platform {
         const info = std.zig.system.NativeTargetInfo.detect(cross_target) catch unreachable;
-        return if (info.target.isWasm()) .{
-            .kind = .web,
-            .module = b.createModule(.{ .source_file = .{ .path = "src/web/platform.zig" } }),
-            .entry_source_file = .{ .path = "src/web/entry.zig" },
-        } else .{
-            .kind = .native,
-            .module = b.createModule(.{ .source_file = .{ .path = "src/native/platform.zig" } }),
-            .entry_source_file = .{ .path = "src/native/entry.zig" },
+        return .{
+            .kind = if (info.target.isWasm()) .web else .native,
+            .entry_source_file = .{ .path = "src/platform/entry.zig" },
+            .module = b.createModule(.{ .source_file = .{ .path = "src/platform/platform.zig" } }),
         };
     }
 };

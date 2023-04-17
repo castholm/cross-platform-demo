@@ -5,18 +5,21 @@
 <title>app</title>
 
 <script type=module>
-const utf8Decoder = new TextDecoder()
 const stderr = document.getElementById("stderr")
+
+const utf8Decoder = new TextDecoder()
 const { instance: { exports } } = await WebAssembly.instantiateStreaming(fetch("lib/app.wasm"), {
   debug: {
-    writeToStderr(len, ptr) {
+    writeToStderr(ptr, len) {
       const str = utf8Decoder.decode(exports.memory.buffer.slice(ptr, ptr + len))
+      console.log(str)
       stderr.textContent += str
     },
   },
 })
+
 exports.main()
 </script>
 
 <h1>stderr</h1>
-<pre id=stderr style="white-space: pre-wrap"></pre>
+<pre id=stderr style=white-space:pre-wrap></pre>
