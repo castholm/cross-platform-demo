@@ -18,9 +18,6 @@ pub fn build(b: *std.Build) !void {
             const zsdl_pkg = zsdl.package(b, target, optimize, .{});
             zsdl_pkg.link(exe);
             try platform.module.dependencies.put("zsdl", zsdl_pkg.zsdl);
-            const gl = b.createModule(.{ .source_file = .{ .path = "deps/gl.zig" } });
-            exe.addModule("gl", gl);
-            try platform.module.dependencies.put("gl", gl);
             break :blk exe;
         },
         .web => blk: {

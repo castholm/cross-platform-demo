@@ -1,19 +1,16 @@
 const platform = @import("platform");
 const app = @import("app");
 const sdl = @import("zsdl");
-const gl = @import("gl");
 
-comptime {
-    if (platform.kind == .web) {
-        @export(main, .{ .name = "main" });
-    }
-}
-
-pub const main = (switch (platform.kind) {
+pub usingnamespace switch (platform.kind) {
     .native => struct {
         pub fn main() !void {
             try sdl.init(.{ .video = true });
             defer sdl.quit();
+
+            try sdl.gl.setAttribute(.context_profile_mask, @enumToInt(sdl.gl.Profile.es));
+            try sdl.gl.setAttribute(.context_major_version, 3);
+            try sdl.gl.setAttribute(.context_minor_version, 0);
 
             const window = try sdl.Window.create(
                 "app",
@@ -31,15 +28,10 @@ pub const main = (switch (platform.kind) {
             try sdl.gl.makeCurrent(window, gl_ctx);
             try sdl.gl.setSwapInterval(1);
 
-            try gl.init(struct {
-                pub fn getCommandFnPtr(_: @This(), command_name: [:0]const u8) !?*anyopaque {
-                    return sdl.gl.getProcAddress(command_name);
-                }
-            }{});
+            platform.gl.init();
 
-            app.main();
-
-            sdl.gl.swapWindow(window);
+            app.start();
+            defer app.stop();
 
             main_loop: while (true) {
                 var event: sdl.Event = undefined;
@@ -48,12 +40,24 @@ pub const main = (switch (platform.kind) {
                         break :main_loop;
                     }
                 }
+
+                app.handleEvent(.{ .kind = .draw });
+
+                sdl.gl.swapWindow(window);
             }
         }
     },
     .web => struct {
-        pub fn main() callconv(.C) void {
-            app.main();
+        pub export fn start() void {
+            app.start();
+        }
+
+        pub export fn draw() void {
+            app.handleEvent(.{ .kind = .draw });
+        }
+
+        pub export fn stop() void {
+            app.stop();
         }
     },
-}.main);
+};
