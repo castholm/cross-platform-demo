@@ -1,20 +1,31 @@
-# Cross-platform demo (native/web)
+# Zig cross-platform demo (native/web)
 
-Simple demo showcasing how to produce both a native and a web application that prints and draws stuff from a shared
-codebase without WASI or Emscripten.
+Simple demo project showcasing how to produce a simple multimedia application that can be run both as a native
+executable and as a web app (without WASI or Emscripten).
 
+## Building/running
 
-## Native
+### Native
+
+Supported targets:
+
+- *x86_64-windows-gnu*
+- *x86_64-linux-gnu* (not yet verified)
+- *x86_64-macos-none* (not yet verified)
+- *aarch64-macos-none* (not yet verified)
 
 ```sh
-$ zig build run
+zig build run -Dtarget=x86_64-windows-gnu
 ```
 
-## Web
+### Web
+
+The only supported target is *wasm32-freestanding-none*.
 
 ```sh
-$ zig build -Dtarget=wasm32-freestanding
+npm install # Only the first time after cloning this repo.
+
+zig build run -Dtarget=wasm32-freestanding-none
 ```
 
-To run the web application, simply serve the `zig-out` directory using a static HTTP server of your choice (I use
-`esbuild --serve --servedir=zig-out`).
+The `run` step will start a development server serving the web app.

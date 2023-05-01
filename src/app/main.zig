@@ -1,12 +1,16 @@
+const std = @import("std");
 const builtin = @import("builtin");
 const platform = @import("platform");
 const gl = platform.gl;
 
 pub fn start() void {
-    platform.debug.print("Hello, {s}!\n", .{"World"});
-    platform.debug.print("builtin.zig_version: {}\n", .{builtin.zig_version});
-    platform.debug.print("builtin.target.cpu.arch: {}\n", .{builtin.target.cpu.arch});
-    platform.debug.print("builtin.target.os.tag: {}\n", .{builtin.target.os.tag});
+    std.debug.print("Hello, {s}!\n", .{"World"});
+    std.debug.print("Zig version: {}\n", .{builtin.zig_version});
+    std.debug.print("Target: {s}-{s}-{s}\n", .{
+        @tagName(builtin.target.cpu.arch),
+        @tagName(builtin.target.os.tag),
+        @tagName(builtin.target.abi),
+    });
 
     const program = buildProgram(
         \\#version 300 es
@@ -40,10 +44,7 @@ pub fn start() void {
         \\) {
         \\  f_Color = v_Color;
         \\}
-    ) catch |err| blk: {
-        platform.debug.print("{}\n", .{err});
-        break :blk 0;
-    };
+    );
     defer gl.deleteProgram(program);
 }
 
@@ -66,21 +67,24 @@ pub fn handleEvent(event: platform.Event) void {
 
         x += 1;
         if (x >= 640) x = -128;
-        y += 1;
+        y += 2;
         if (y >= 480) y = -128;
     }
 }
 
 pub fn stop() void {
-    platform.debug.print("Goodbye, {s}!\n", .{"World"});
+    std.debug.print("Goodbye, {s}!\n", .{"World"});
 }
 
+const gl_logger = std.log.scoped(.gl);
+
+// Demonstrates that 'gl.shaderSource()' and 'glGetShaderSource()' are both implemented correctly.
 pub fn buildProgram(
     vertex_shader_source1: []const u8,
     vertex_shader_source2: []const u8,
     fragment_shader_source1: []const u8,
     fragment_shader_source2: []const u8,
-) !gl.Uint {
+) gl.Uint {
     const program = gl.createProgram();
     errdefer gl.deleteProgram(program);
 
@@ -97,17 +101,20 @@ pub fn buildProgram(
         -1,
     });
 
-    gl.getShaderSource(vertex_shader, buffer.len, null, &buffer);
-    platform.debug.print("====[VERTEX SHADER]====\n{s}\n====[END OF VERTEX SHADER]====\n", .{@as([*:0]const u8, &buffer)});
-
     gl.compileShader(vertex_shader);
     gl.getShaderiv(vertex_shader, gl.COMPILE_STATUS, &success);
     if (success == gl.FALSE) {
         gl.getShaderInfoLog(vertex_shader, buffer.len, null, &buffer);
-        platform.debug.print("gl: {s}", .{@as([*:0]const u8, &buffer)});
-        return error.VertexShaderCompilationFailed;
+        gl_logger.err("{s}", .{@as([*:0]const u8, &buffer)});
+        return 0;
     }
     gl.attachShader(program, vertex_shader);
+
+    gl.getShaderSource(vertex_shader, buffer.len, null, &buffer);
+    std.debug.print(
+        "// VERTEX SHADER\n{s}\n// END OF VERTEX SHADER\n",
+        .{@as([*:0]const u8, &buffer)},
+    );
 
     const fragment_shader = gl.createShader(gl.FRAGMENT_SHADER);
     defer gl.deleteShader(fragment_shader);
@@ -116,24 +123,27 @@ pub fn buildProgram(
         fragment_shader_source2.ptr,
     }, null);
 
-    gl.getShaderSource(fragment_shader, buffer.len, null, &buffer);
-    platform.debug.print("====[FRAGMENT SHADER]====\n{s}\n====[END OF FRAGMENT SHADER]====\n", .{@as([*:0]const u8, &buffer)});
-
     gl.compileShader(fragment_shader);
     gl.getShaderiv(fragment_shader, gl.COMPILE_STATUS, &success);
     if (success == gl.FALSE) {
         gl.getShaderInfoLog(fragment_shader, buffer.len, null, &buffer);
-        platform.debug.print("gl: {s}", .{@as([*:0]const u8, &buffer)});
-        return error.FragmentShaderCompilationFailed;
+        gl_logger.err("{s}", .{@as([*:0]const u8, &buffer)});
+        return 0;
     }
     gl.attachShader(program, fragment_shader);
+
+    gl.getShaderSource(fragment_shader, buffer.len, null, &buffer);
+    std.debug.print(
+        "// FRAGMENT SHADER\n{s}\n// END OF FRAGMENT SHADER\n",
+        .{@as([*:0]const u8, &buffer)},
+    );
 
     gl.linkProgram(program);
     gl.getProgramiv(program, gl.LINK_STATUS, &success);
     if (success == gl.FALSE) {
         gl.getProgramInfoLog(program, buffer.len, null, &buffer);
-        platform.debug.print("gl: {s}", .{@as([*:0]const u8, &buffer)});
-        return error.ProgramLinkingFailed;
+        gl_logger.err("{s}", .{@as([*:0]const u8, &buffer)});
+        return 0;
     }
 
     return program;
