@@ -1,7 +1,7 @@
 const std = @import("std");
 const builtin = @import("builtin");
-const platform = @import("platform");
-const gl = platform.gl;
+const framework = @import("framework");
+const gl = framework.gl;
 
 pub fn start() void {
     std.debug.print("Hello, {s}!\n", .{"World"});
@@ -51,7 +51,7 @@ pub fn start() void {
 var x: gl.Int = 0;
 var y: gl.Int = 0;
 
-pub fn handleEvent(event: platform.Event) void {
+pub fn handleEvent(event: framework.Event) void {
     if (event.kind == .draw) {
         gl.clearBufferfv(gl.COLOR, 0, &[_]f32{ 0.7, 0.8, 0.9, 1 });
         gl.enable(gl.SCISSOR_TEST);

@@ -6,7 +6,7 @@ const stderr = document.getElementById("stderr") as HTMLPreElement
 
 const glBinding = new GLBinding()
 
-const wasmInstantiatedSource = await WebAssembly.instantiateStreaming(fetch("app.wasm"), {
+const wasmInstantiatedSource = await WebAssembly.instantiateStreaming(fetch("index.wasm"), {
   system: {
     writeToStderr: (ptr: number, len: number): void => {
       const string = utf8Decoder.decode(new Uint8Array(wasmExports.memory.buffer, ptr, len))

@@ -1,5 +1,5 @@
-const platform = @import("platform");
 const app = @import("app");
+const framework = @import("framework");
 const sdl = @import("zsdl");
 
 pub fn main() !void {
@@ -25,7 +25,7 @@ pub fn main() !void {
 
     try sdl.gl.setSwapInterval(1);
 
-    platform.gl.init();
+    framework.gl.init();
 
     app.start();
     defer app.stop();

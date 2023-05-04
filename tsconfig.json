@@ -28,5 +28,5 @@
     // Completeness
     "skipLibCheck": true,
   },
-  "include": ["src/platform-web"],
+  "include": ["src/framework/www"],
 }

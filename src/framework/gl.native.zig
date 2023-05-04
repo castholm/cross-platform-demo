@@ -12,8 +12,8 @@
 //! OpenGL ES 3.0
 
 const std = @import("std");
-const sdl = @import("zsdl");
 const gl = @import("gl.zig");
+const sdl = @import("zsdl");
 
 pub var glActiveTexture: *const fn (texture: gl.Enum) callconv(.C) void = undefined;
 pub var glAttachShader: *const fn (program: gl.Uint, shader: gl.Uint) callconv(.C) void = undefined;

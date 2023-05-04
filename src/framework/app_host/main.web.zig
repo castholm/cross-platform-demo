@@ -1,16 +1,15 @@
 const std = @import("std");
-const platform = @import("platform");
 const app = @import("app");
 
-pub export fn start() void {
+export fn start() void {
     app.start();
 }
 
-pub export fn draw() void {
+export fn draw() void {
     app.handleEvent(.{ .kind = .draw });
 }
 
-pub export fn stop() void {
+export fn stop() void {
     app.stop();
 }
 

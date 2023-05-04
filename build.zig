@@ -1,13 +1,18 @@
 const std = @import("std");
 
 pub fn build(b: *std.Build) void {
-    const target = b.standardTargetOptions(.{ .whitelist = App.target_whitelist });
+    const target = b.standardTargetOptions(.{ .whitelist = CrossPlatformApp.target_whitelist });
     const optimize = b.standardOptimizeOption(.{});
 
-    const app = addApp(b, "cross-platform-demo", target, optimize);
-    installApp(b, app);
+    const app = addCrossPlatformApp(b, .{
+        .name = "app",
+        .source_file = .{ .path = "src/app/main.zig" },
+        .target = target,
+        .optimize = optimize,
+    });
+    installCrossPlatformApp(b, app);
 
-    const run_app = addRunApp(b, app);
+    const run_app = addRunCrossPlatformApp(b, app);
     run_app.step.dependOn(b.getInstallStep());
     const run_tls = b.step("run", "Run the app");
     run_tls.dependOn(&run_app.step);
@@ -15,107 +20,120 @@ pub fn build(b: *std.Build) void {
     // TODO: Figure out tests.
 }
 
-fn addApp(
+fn addCrossPlatformApp(
     b: *std.Build,
-    name: []const u8,
-    target: std.zig.CrossTarget,
-    optimize: std.builtin.Mode,
-) App {
-    const platform_kind = App.PlatformKind.detect(target);
+    options: struct {
+        name: []const u8,
+        source_file: std.Build.FileSource,
+        target: std.zig.CrossTarget = .{},
+        optimize: std.builtin.Mode = .Debug,
+    },
+) CrossPlatformApp {
+    const platform_kind = CrossPlatformApp.PlatformKind.detect(options.target);
+
+    const name = b.dupe(options.name);
 
     const install_step = b.allocator.create(std.build.Step) catch @panic("OOM");
     install_step.* = std.Build.Step.init(.{
         .id = .custom,
         .name = b.fmt("install app {s} {s} {s}", .{
             name,
-            @tagName(optimize),
-            target.zigTriple(b.allocator) catch @panic("OOM"),
+            @tagName(options.optimize),
+            options.target.zigTriple(b.allocator) catch @panic("OOM"),
         }),
         .owner = b,
     });
 
-    const entry_artifact = switch (platform_kind) {
+    const app_host: *std.Build.CompileStep = switch (platform_kind) {
         .native => b.addExecutable(.{
-            .name = b.dupe(name),
-            .root_source_file = .{ .path = "src/platform-entry/main.zig" },
-            .target = target,
-            .optimize = optimize,
+            .name = name,
+            .root_source_file = .{ .path = "src/framework/app_host/main.zig" },
+            .target = options.target,
+            .optimize = options.optimize,
         }),
 
         .web => blk: {
             const wasm = b.addSharedLibrary(.{
-                .name = "app",
-                .root_source_file = .{ .path = "src/platform-entry/main.zig" },
-                .target = target,
-                .optimize = optimize,
+                .name = "index",
+                .root_source_file = .{ .path = "src/framework/app_host/main.zig" },
+                .target = options.target,
+                .optimize = options.optimize,
             });
             wasm.rdynamic = true;
-            wasm.override_dest_dir = .prefix;
             break :blk wasm;
         },
     };
-    install_step.dependOn(&b.addInstallArtifact(entry_artifact).step);
+    const dest_dir: std.Build.InstallDir = switch (platform_kind) {
+        .native => .prefix,
+        .web => .{ .custom = name },
+    };
+    app_host.override_dest_dir = dest_dir;
 
-    const platform_module = b.createModule(.{
-        .source_file = .{ .path = "src/platform/main.zig" },
-    });
-    entry_artifact.addModule("platform", platform_module);
+    install_step.dependOn(&b.addInstallArtifact(app_host).step);
 
-    const app_module = b.createModule(.{
-        .source_file = .{ .path = "src/app/main.zig" },
-        .dependencies = &.{
-            .{ .name = "platform", .module = platform_module },
-        },
-    });
-    entry_artifact.addModule("app", app_module);
+    const app = b.createModule(.{ .source_file = options.source_file });
+    const framework = b.createModule(.{ .source_file = .{ .path = "src/framework/main.zig" } });
+
+    app_host.addModule("app", app);
+    app_host.addModule("framework", framework);
+    app.dependencies.put("app", app) catch @panic("OOM");
+    app.dependencies.put("framework", framework) catch @panic("OOM");
+    framework.dependencies.put("app", app) catch @panic("OOM");
+    framework.dependencies.put("framework", framework) catch @panic("OOM");
 
     switch (platform_kind) {
         .native => {
             // Add SDL2.
-            const zsdl = @import("deps/zsdl/build.zig").package(b, target, optimize, .{});
-            zsdl.link(entry_artifact);
-            platform_module.dependencies.put("zsdl", zsdl.zsdl) catch @panic("OOM");
+            const zsdl = @import("deps/zsdl/build.zig").package(
+                b,
+                options.target,
+                options.optimize,
+                .{},
+            );
+            zsdl.link(app_host);
+            framework.dependencies.put("zsdl", zsdl.zsdl) catch @panic("OOM");
         },
         .web => {
             // Copy 'index.html' to the install directory.
-            install_step.dependOn(&b.addInstallFile(
-                .{ .path = "src/platform-web/index.html" },
+            install_step.dependOn(&b.addInstallFileWithDir(
+                .{ .path = "src/framework/www/index.html" },
+                dest_dir,
                 "index.html",
             ).step);
 
-            const cwd = std.process.getCwdAlloc(b.allocator) catch @panic("OOM");
-
             // Compile and bundle TypeScript using esbuild, writing the results to the install
             // directory.
-            const esbuild_cmd = b.addSystemCommand(&.{
+            const esbuild_bundle = b.addSystemCommand(&.{
                 b.pathFromRoot("node_modules/.bin/esbuild"),
-                b.pathFromRoot("src/platform-web/main.ts"),
+                b.pathFromRoot("src/framework/www/index.ts"),
                 "--bundle",
                 "--format=esm",
                 std.mem.concat(b.allocator, u8, &.{
                     "--outfile=",
                     std.fs.path.resolve(b.allocator, &.{
-                        cwd,
-                        b.getInstallPath(.prefix, "app.js"),
+                        std.process.getCwdAlloc(b.allocator) catch @panic("OOM"),
+                        b.getInstallPath(dest_dir, "index.js"),
                     }) catch @panic("OOM"),
                 }) catch @panic("OOM"),
             });
-            install_step.dependOn(&esbuild_cmd.step);
-            b.pushInstalledFile(.prefix, "app.js"); // Inform zig build about esbuild's output.
+            install_step.dependOn(&esbuild_bundle.step);
+            // Inform zig build about esbuild's output.
+            b.pushInstalledFile(dest_dir, "index.js");
 
-            if (optimize == .Debug) {
+            if (options.optimize == .Debug) {
                 // Generate source maps in debug mode.
-                esbuild_cmd.addArg("--sourcemap");
-                b.pushInstalledFile(.prefix, "app.js.map");
+                esbuild_bundle.addArg("--sourcemap");
+                b.pushInstalledFile(dest_dir, "index.js.map");
             } else {
                 // Minify the bundle in release mode.
-                esbuild_cmd.addArg("--minify");
+                esbuild_bundle.addArg("--minify");
 
                 // In release mode, type check TypeScript source files using tsc before running the
-                // esbuild step (as esbuild doesn't do any type checking on its own).
-                esbuild_cmd.step.dependOn(&b.addSystemCommand(&.{
+                // esbuild step (esbuild doesn't do any type checking on its own).
+                const tsc = b.addSystemCommand(&.{
                     b.pathFromRoot("node_modules/.bin/tsc"),
-                }).step);
+                });
+                esbuild_bundle.step.dependOn(&tsc.step);
             }
         },
     }
@@ -123,36 +141,43 @@ fn addApp(
     return .{
         .platform_kind = platform_kind,
         .install_step = install_step,
-        .entry_artifact = entry_artifact,
+        .host_artifact = app_host,
+        .module = app,
+        .dest_dir = dest_dir,
     };
 }
 
-fn installApp(b: *std.Build, app: App) void {
+fn installCrossPlatformApp(b: *std.Build, app: CrossPlatformApp) void {
     b.getInstallStep().dependOn(app.install_step);
 }
 
-fn addRunApp(b: *std.Build, app: App) *std.Build.RunStep {
-    const run_app = switch (app.platform_kind) {
-        // Native: Run the executable as normal.
-        .native => b.addRunArtifact(app.entry_artifact),
+fn addRunCrossPlatformApp(b: *std.Build, app: CrossPlatformApp) *std.Build.RunStep {
+    const run_app: *std.Build.RunStep = switch (app.platform_kind) {
+        // Run the executable as normal.
+        .native => b.addRunArtifact(app.host_artifact),
 
-        // Web: Use esbuild's serve mode to serve the contents of the install directory.
+        // Use esbuild's serve mode to serve the contents of the install directory.
         .web => b.addSystemCommand(&.{
             b.pathFromRoot("node_modules/.bin/esbuild"),
             "--serve",
             std.mem.concat(b.allocator, u8, &.{
-                "--servedir=", b.install_prefix,
+                "--servedir=",
+                std.fs.path.resolve(b.allocator, &.{
+                    std.process.getCwdAlloc(b.allocator) catch @panic("OOM"),
+                    b.getInstallPath(app.dest_dir, ""),
+                }) catch @panic("OOM"),
             }) catch @panic("OOM"),
         }),
     };
-    run_app.step.dependOn(app.install_step);
     return run_app;
 }
 
-const App = struct {
+const CrossPlatformApp = struct {
     platform_kind: PlatformKind,
     install_step: *std.build.Step,
-    entry_artifact: *std.build.CompileStep,
+    host_artifact: *std.build.CompileStep,
+    module: *std.build.Module,
+    dest_dir: std.Build.InstallDir,
 
     const PlatformKind = enum {
         native,

@@ -12,8 +12,8 @@
 //! OpenGL ES 3.0
 
 const std = @import("std");
-const platform = @import("main.zig");
-const impl = switch (platform.kind) {
+const framework = @import("main.zig");
+const impl = switch (framework.platform_kind) {
     .native => @import("gl.native.zig"),
     .web => @import("gl.web.zig"),
 };
