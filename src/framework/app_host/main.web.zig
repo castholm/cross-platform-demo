@@ -13,22 +13,6 @@ export fn stop() void {
     app.stop();
 }
 
-pub const std_options = struct {
-    pub fn logFn(
-        comptime message_level: std.log.Level,
-        comptime scope: @Type(.EnumLiteral),
-        comptime format: []const u8,
-        args: anytype,
-    ) void {
-        const level_txt = comptime message_level.asText();
-        const prefix2 = if (scope == .default) ": " else "(" ++ @tagName(scope) ++ "): ";
-        const stderr = std.io.getStdErr().writer();
-        std.debug.getStderrMutex().lock();
-        defer std.debug.getStderrMutex().unlock();
-        nosuspend stderr.print(level_txt ++ prefix2 ++ format ++ "\n", args) catch return;
-    }
-};
-
 // Zig supports the concept of BYOOS ("bring your own operating system") by letting you define a
 // struct in the root source file that implements OS-specific functionality. This way we can get
 // things like 'std.debug.print()' working in the web browser.

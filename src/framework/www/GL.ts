@@ -6,13 +6,28 @@ let sb: string[] = []
 export class GLBinding {
   gl: WebGL2RenderingContext = null!
 
-  #wasmImports: WasmImports = null!
+  readonly #webGLObjects = new Map<number, WebGLObject>()
+  #webGLObjectId = 0
+
+  #getWebGLObject<T extends WebGLObject | null>(objectId: number): T | null {
+    return this.#webGLObjects.get(objectId) as T | undefined ?? null
+  }
+  #addWebGLObject(object: WebGLObject | null): number {
+    if (object === null) return 0
+    this.#webGLObjects.set(++this.#webGLObjectId, object)
+    return this.#webGLObjectId
+  }
+  #removeWebGLObject(objectId: number): void {
+    this.#webGLObjects.delete(objectId)
+  }
+
+  #wasmImports: GLBindingWasmImports = null!
   #wasmMemoryBuffer: ArrayBuffer = null!
 
-  get wasmImports(): WasmImports {
+  get wasmImports(): GLBindingWasmImports {
     return this.#wasmImports
   }
-  set wasmImports(value: WasmImports) {
+  set wasmImports(value: GLBindingWasmImports) {
     this.#wasmImports = value
     this.#wasmMemoryBuffer = value.memory.buffer
   }
@@ -34,21 +49,6 @@ export class GLBinding {
   }
   #writeString(ptr: number, maxLength: number, string: string): number {
     return utf8Encoder.encodeInto(string, this.#u8Ptr(ptr, maxLength)).written!
-  }
-
-  readonly #webGLObjects = new Map<number, WebGLObject>()
-  #webGLObjectId = 0
-
-  #getWebGLObject<T extends WebGLObject | null>(objectId: number): T | null {
-    return this.#webGLObjects.get(objectId) as T | undefined ?? null
-  }
-  #addWebGLObject(object: WebGLObject | null): number {
-    if (object === null) return 0
-    this.#webGLObjects.set(++this.#webGLObjectId, object)
-    return this.#webGLObjectId
-  }
-  #removeWebGLObject(objectId: number): void {
-    this.#webGLObjects.delete(objectId)
   }
 
   readonly wasmExports = {
@@ -91,31 +91,21 @@ export class GLBinding {
       this.gl.enable(cap)
     },
     getProgramInfoLog: (program: number, bufSize: number, infoLog: number): number => {
-      const programObject = this.#getWebGLObject(program)
-      if (!programObject) return 0
-      return this.#writeString(infoLog, bufSize, this.gl.getProgramInfoLog(programObject) ?? "")
+      return this.#writeString(infoLog, bufSize, this.gl.getProgramInfoLog(this.#getWebGLObject(program)!) ?? "")
     },
     getProgramiv: (program: number, pname: number, params: number): void => {
-      const programObject = this.#getWebGLObject(program)
-      if (!programObject) return
-      const val = this.gl.getProgramParameter(programObject, pname)
+      const val = this.gl.getProgramParameter(this.#getWebGLObject(program)!, pname)
       if (val === null) return
       this.#i32Ptr(params, 1)[0] = val
     },
     getShaderInfoLog: (shader: number, bufSize: number, infoLog: number): number => {
-      const shaderObject = this.#getWebGLObject(shader)
-      if (!shaderObject) return 0
-      return this.#writeString(infoLog, bufSize, this.gl.getShaderInfoLog(shaderObject) ?? "")
+      return this.#writeString(infoLog, bufSize, this.gl.getShaderInfoLog(this.#getWebGLObject(shader)!) ?? "")
     },
     getShaderSource: (shader: number, bufSize: number, source: number): number => {
-      const shaderObject = this.#getWebGLObject(shader)
-      if (!shaderObject) return 0
-      return this.#writeString(source, bufSize, this.gl.getShaderSource(shaderObject) ?? "")
+      return this.#writeString(source, bufSize, this.gl.getShaderSource(this.#getWebGLObject(shader)!) ?? "")
     },
     getShaderiv: (shader: number, pname: number, params: number): void => {
-      const shaderObject = this.#getWebGLObject(shader)
-      if (!shaderObject) return
-      const val = this.gl.getShaderParameter(shaderObject, pname)
+      const val = this.gl.getShaderParameter(this.#getWebGLObject(shader)!, pname)
       if (val !== null) this.#i32Ptr(params, 1)[0] = val
     },
     linkProgram: (program: number): void => {
@@ -124,10 +114,10 @@ export class GLBinding {
     scissor: (x: number, y: number, width: number, height: number): void => {
       this.gl.scissor(x, y, width, height)
     },
-    shaderSource: (shader: number, string: number, length: number, i: number, count: number) => {
-      sb.length = i
-      sb.push(this.#readString(string, length))
+    shaderSource: (shader: number, string: number, length: number, i: number, count: number): void => {
+      sb[i] = this.#readString(string, length)
       if (i === count - 1) {
+        sb.length = count
         this.gl.shaderSource(this.#getWebGLObject(shader)!, sb.join(""))
         sb.length = 0
       }
@@ -135,7 +125,8 @@ export class GLBinding {
   } as const
 }
 
-export type WasmImports = Readonly<{ memory: WebAssembly.Memory }>
+export type GLBindingWasmImports = Readonly<{ memory: WebAssembly.Memory }>
+export type GLBindingWasmExports = GLBinding["wasmExports"]
 
 type WebGLObject =
   | WebGLBuffer

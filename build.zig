@@ -4,20 +4,18 @@ pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{ .whitelist = CrossPlatformApp.target_whitelist });
     const optimize = b.standardOptimizeOption(.{});
 
-    const app = addCrossPlatformApp(b, .{
-        .name = "app",
-        .source_file = .{ .path = "src/app/main.zig" },
+    const demo_app = addCrossPlatformApp(b, .{
+        .name = "demo",
+        .source_file = .{ .path = "src/demo/main.zig" },
         .target = target,
         .optimize = optimize,
     });
-    installCrossPlatformApp(b, app);
+    installCrossPlatformApp(b, demo_app);
 
-    const run_app = addRunCrossPlatformApp(b, app);
-    run_app.step.dependOn(b.getInstallStep());
-    const run_tls = b.step("run", "Run the app");
-    run_tls.dependOn(&run_app.step);
-
-    // TODO: Figure out tests.
+    const run_demo_app = addRunCrossPlatformApp(b, demo_app);
+    run_demo_app.step.dependOn(b.getInstallStep());
+    const run_tls = b.step("run", "Run the demo app");
+    run_tls.dependOn(&run_demo_app.step);
 }
 
 fn addCrossPlatformApp(
@@ -44,17 +42,16 @@ fn addCrossPlatformApp(
         .owner = b,
     });
 
-    const app_host: *std.Build.CompileStep = switch (platform_kind) {
+    const app_host: *std.Build.Step.Compile = switch (platform_kind) {
         .native => b.addExecutable(.{
             .name = name,
             .root_source_file = .{ .path = "src/framework/app_host/main.zig" },
             .target = options.target,
             .optimize = options.optimize,
         }),
-
         .web => blk: {
             const wasm = b.addSharedLibrary(.{
-                .name = "index",
+                .name = name,
                 .root_source_file = .{ .path = "src/framework/app_host/main.zig" },
                 .target = options.target,
                 .optimize = options.optimize,
@@ -64,8 +61,8 @@ fn addCrossPlatformApp(
         },
     };
     const dest_dir: std.Build.InstallDir = switch (platform_kind) {
-        .native => .prefix,
-        .web => .{ .custom = name },
+        .native => .bin,
+        .web => .{ .custom = "www" },
     };
     app_host.override_dest_dir = dest_dir;
 
@@ -83,7 +80,7 @@ fn addCrossPlatformApp(
 
     switch (platform_kind) {
         .native => {
-            // Add SDL2.
+            // Add SDL2 as a dependency.
             const zsdl = @import("deps/zsdl/build.zig").package(
                 b,
                 options.target,
@@ -108,13 +105,13 @@ fn addCrossPlatformApp(
                 b.pathFromRoot("src/framework/www/index.ts"),
                 "--bundle",
                 "--format=esm",
-                std.mem.concat(b.allocator, u8, &.{
-                    "--outfile=",
+                b.fmt("--define:__ARTIFACT_FILENAME=\"{s}\"", .{app_host.out_filename}),
+                b.fmt("--outfile={s}", .{
                     std.fs.path.resolve(b.allocator, &.{
                         std.process.getCwdAlloc(b.allocator) catch @panic("OOM"),
                         b.getInstallPath(dest_dir, "index.js"),
                     }) catch @panic("OOM"),
-                }) catch @panic("OOM"),
+                }),
             });
             install_step.dependOn(&esbuild_bundle.step);
             // Inform zig build about esbuild's output.
@@ -151,22 +148,21 @@ fn installCrossPlatformApp(b: *std.Build, app: CrossPlatformApp) void {
     b.getInstallStep().dependOn(app.install_step);
 }
 
-fn addRunCrossPlatformApp(b: *std.Build, app: CrossPlatformApp) *std.Build.RunStep {
-    const run_app: *std.Build.RunStep = switch (app.platform_kind) {
-        // Run the executable as normal.
+fn addRunCrossPlatformApp(b: *std.Build, app: CrossPlatformApp) *std.Build.Step.Run {
+    const run_app: *std.Build.Step.Run = switch (app.platform_kind) {
+        // Native: Run the executable as normal.
         .native => b.addRunArtifact(app.host_artifact),
 
-        // Use esbuild's serve mode to serve the contents of the install directory.
+        // Web: Use esbuild's serve mode to serve the contents of the install directory.
         .web => b.addSystemCommand(&.{
             b.pathFromRoot("node_modules/.bin/esbuild"),
             "--serve",
-            std.mem.concat(b.allocator, u8, &.{
-                "--servedir=",
+            b.fmt("--servedir={s}", .{
                 std.fs.path.resolve(b.allocator, &.{
                     std.process.getCwdAlloc(b.allocator) catch @panic("OOM"),
                     b.getInstallPath(app.dest_dir, ""),
                 }) catch @panic("OOM"),
-            }) catch @panic("OOM"),
+            }),
         }),
     };
     return run_app;
@@ -175,7 +171,7 @@ fn addRunCrossPlatformApp(b: *std.Build, app: CrossPlatformApp) *std.Build.RunSt
 const CrossPlatformApp = struct {
     platform_kind: PlatformKind,
     install_step: *std.build.Step,
-    host_artifact: *std.build.CompileStep,
+    host_artifact: *std.build.Step.Compile,
     module: *std.build.Module,
     dest_dir: std.Build.InstallDir,
 

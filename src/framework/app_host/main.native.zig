@@ -11,7 +11,7 @@ pub fn main() !void {
     try sdl.gl.setAttribute(.context_minor_version, 0);
 
     const window = try sdl.Window.create(
-        "app",
+        "Cross-platform app",
         sdl.Window.pos_centered,
         sdl.Window.pos_centered,
         640,
