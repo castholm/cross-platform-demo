@@ -25,7 +25,7 @@ const wasmExports = wasmInstantiatedSource.instance.exports as Readonly<{
   stop(): void
 }>
 
-glBinding.gl = canvas.getContext("webgl2")!
+glBinding.gl = canvas.getContext("webgl2", { antialias: false })!
 glBinding.wasmImports = wasmExports
 
 wasmExports.start()

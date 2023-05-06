@@ -7,7 +7,7 @@
 //
 // END OF NOTICE
 //
-// Parts of this source file was generated using zigglgen <https://github.com/castholm/zigglgen>.
+// Parts of this source file were generated using zigglgen <https://github.com/castholm/zigglgen>.
 
 //! OpenGL ES 3.0
 

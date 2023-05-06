@@ -7,12 +7,13 @@
 //
 // END OF NOTICE
 //
-// Parts of this source file was generated using zigglgen <https://github.com/castholm/zigglgen>.
+// Parts of this source file were generated using zigglgen <https://github.com/castholm/zigglgen>.
 
 //! OpenGL ES 3.0
 
 const std = @import("std");
 const framework = @import("main.zig");
+
 const impl = switch (framework.platform_kind) {
     .native => @import("gl.native.zig"),
     .web => @import("gl.web.zig"),

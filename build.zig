@@ -10,6 +10,10 @@ pub fn build(b: *std.Build) void {
         .target = target,
         .optimize = optimize,
     });
+    const zmath = @import("deps/zmath/build.zig").package(b, target, optimize, .{});
+    zmath.link(demo_app.host_artifact);
+    demo_app.module.dependencies.put("zmath", zmath.zmath) catch @panic("OOM");
+    demo_app.module.dependencies.put("zmath_options", zmath.zmath_options) catch @panic("OOM");
     installCrossPlatformApp(b, demo_app);
 
     const run_demo_app = addRunCrossPlatformApp(b, demo_app);
